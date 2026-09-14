@@ -3,7 +3,7 @@ import path from 'path';
 import net from 'net';
 
 const DB_PORT = 5432;
-const DB_DIR = path.resolve(__dirname, '../../data/db');
+const DB_DIR = path.resolve(__dirname, '../data/db');
 
 function isPortInUse(port: number): Promise<boolean> {
   return new Promise((resolve) => {
