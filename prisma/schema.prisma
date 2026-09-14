@@ -1,0 +1,185 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  TUTOR
+  STUDENT
+  PARENT
+}
+
+enum SessionStatus {
+  PLANNED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  EXCUSED
+}
+
+model User {
+  id           String    @id @default(uuid())
+  email        String    @unique
+  passwordHash String    @map("password_hash")
+  role         Role
+  firstName    String    @map("first_name")
+  lastName     String    @map("last_name")
+  avatarUrl    String?   @map("avatar_url")
+  createdAt    DateTime  @default(now()) @map("created_at")
+  updatedAt    DateTime  @updatedAt @map("updated_at")
+
+  // Relations
+  tutoredClasses     Class[]                @relation("TutorClasses")
+  tutoredSessions    Session[]              @relation("TutorSessions")
+  enrollments        ClassEnrollment[]
+  sessionAttendance  Attendance[]
+  parentLinks        ParentStudent[]        @relation("ParentRelation")
+  studentLinks       ParentStudent[]        @relation("StudentRelation")
+  submissions        AssignmentSubmission[]
+  uploadedResources  Resource[]
+  refreshTokens      RefreshToken[]
+
+  @@map("users")
+}
+
+model RefreshToken {
+  id        String   @id @default(uuid())
+  token     String   @unique
+  userId    String   @map("user_id")
+  revoked   Boolean  @default(false)
+  expiresAt DateTime @map("expires_at")
+  createdAt DateTime @default(now()) @map("created_at")
+
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([token])
+  @@map("refresh_tokens")
+}
+
+model ParentStudent {
+  id           String   @id @default(uuid())
+  parentId     String   @map("parent_id")
+  studentId    String   @map("student_id")
+  relationship String   @default("guardian")
+
+  parent       User     @relation("ParentRelation", fields: [parentId], references: [id], onDelete: Cascade)
+  student      User     @relation("StudentRelation", fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([parentId, studentId])
+  @@map("parent_students")
+}
+
+model Class {
+  id          String            @id @default(uuid())
+  name        String
+  subject     String
+  tutorId     String?           @map("tutor_id")
+  description String?
+  createdAt   DateTime          @default(now()) @map("created_at")
+
+  tutor       User?             @relation("TutorClasses", fields: [tutorId], references: [id], onDelete: SetNull)
+  enrollments ClassEnrollment[]
+  sessions    Session[]
+  assignments Assignment[]
+
+  @@map("classes")
+}
+
+model ClassEnrollment {
+  id        String   @id @default(uuid())
+  classId   String   @map("class_id")
+  studentId String   @map("student_id")
+  joinedAt  DateTime @default(now()) @map("joined_at")
+
+  class     Class    @relation(fields: [classId], references: [id], onDelete: Cascade)
+  student   User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([classId, studentId])
+  @@map("class_enrollments")
+}
+
+model Session {
+  id            String        @id @default(uuid())
+  classId       String        @map("class_id")
+  tutorId       String        @map("tutor_id")
+  startTime     DateTime      @map("start_time")
+  endTime       DateTime      @map("end_time")
+  status        SessionStatus @default(PLANNED)
+  notes         String?
+  attachmentUrl String?       @map("attachment_url")
+
+  class         Class         @relation(fields: [classId], references: [id], onDelete: Cascade)
+  tutor         User          @relation("TutorSessions", fields: [tutorId], references: [id], onDelete: Restrict)
+  attendances   Attendance[]
+
+  @@index([startTime, tutorId])
+  @@map("sessions")
+}
+
+model Attendance {
+  id        String           @id @default(uuid())
+  sessionId String           @map("session_id")
+  studentId String           @map("student_id")
+  status    AttendanceStatus @default(PRESENT)
+
+  session   Session          @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  student   User             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@map("attendance")
+}
+
+model Assignment {
+  id            String                 @id @default(uuid())
+  classId       String                 @map("class_id")
+  title         String
+  description   String?
+  dueDate       DateTime               @map("due_date")
+  attachmentUrl String?                @map("attachment_url")
+
+  class         Class                  @relation(fields: [classId], references: [id], onDelete: Cascade)
+  submissions   AssignmentSubmission[]
+
+  @@map("assignments")
+}
+
+model AssignmentSubmission {
+  id           String     @id @default(uuid())
+  assignmentId String     @map("assignment_id")
+  studentId    String     @map("student_id")
+  fileUrl      String     @map("file_url")
+  submittedAt  DateTime   @default(now()) @map("submitted_at")
+  grade        Float?
+  feedback     String?
+
+  assignment   Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  student      User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([assignmentId, studentId])
+  @@map("assignment_submissions")
+}
+
+model Resource {
+  id          String   @id @default(uuid())
+  uploaderId  String   @map("uploader_id")
+  title       String
+  category    String
+  fileUrl     String   @map("file_url")
+  isPublic    Boolean  @default(false) @map("is_public")
+  createdAt   DateTime @default(now()) @map("created_at")
+
+  uploader    User     @relation(fields: [uploaderId], references: [id], onDelete: Cascade)
+
+  @@map("resources")
+}

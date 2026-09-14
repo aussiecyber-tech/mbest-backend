@@ -1,0 +1,47 @@
+[
+  {
+    "id": "demo-user-uuid-1789367562939",
+    "email": "jane.parent@mbest.com",
+    "role": "PARENT",
+    "firstName": "Jane",
+    "lastName": "Parent",
+    "avatarUrl": "https://ui-avatars.com/api/?name=Jane+Parent&background=random",
+    "createdAt": "2026-09-14T06:32:42.939Z"
+  },
+  {
+    "id": "demo-admin-uuid-1",
+    "email": "admin@mbest.com",
+    "role": "ADMIN",
+    "firstName": "Super",
+    "lastName": "Administrator",
+    "avatarUrl": "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150",
+    "createdAt": "2026-09-14T06:24:45.615Z"
+  },
+  {
+    "id": "demo-tutor-uuid-2",
+    "email": "tutor@mbest.com",
+    "role": "TUTOR",
+    "firstName": "Dr. Robert",
+    "lastName": "Chen",
+    "avatarUrl": "https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150",
+    "createdAt": "2026-09-14T06:24:45.615Z"
+  },
+  {
+    "id": "demo-parent-uuid-3",
+    "email": "parent@mbest.com",
+    "role": "PARENT",
+    "firstName": "Sarah",
+    "lastName": "Jenkins",
+    "avatarUrl": "https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150",
+    "createdAt": "2026-09-14T06:24:45.615Z"
+  },
+  {
+    "id": "demo-student-uuid-4",
+    "email": "student@mbest.com",
+    "role": "STUDENT",
+    "firstName": "Alex",
+    "lastName": "Johnson",
+    "avatarUrl": "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150",
+    "createdAt": "2026-09-14T06:24:45.615Z"
+  }
+]
