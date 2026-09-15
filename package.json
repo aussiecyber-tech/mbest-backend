@@ -16,7 +16,14 @@
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
   },
-  "keywords": ["lms", "mbest", "express", "prisma", "postgresql", "typescript"],
+  "keywords": [
+    "lms",
+    "mbest",
+    "express",
+    "prisma",
+    "postgresql",
+    "typescript"
+  ],
   "author": "MBEST Team",
   "license": "ISC",
   "dependencies": {
@@ -28,6 +35,7 @@
     "express": "^4.21.1",
     "helmet": "^8.0.0",
     "jsonwebtoken": "^9.0.2",
+    "node-fetch": "^3.3.2",
     "zod": "^3.23.8"
   },
   "devDependencies": {

@@ -67,3 +67,4 @@ if (require.main === module) {
     console.log('[Database] Ready.');
   });
 }
+
