@@ -4,9 +4,9 @@
   "description": "MBEST Learning Management System Production Backend",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "node api.js && ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "prisma generate && rimraf dist && tsc",
-    "start": "node dist/server.js",
+    "start": "node api.js && node dist/server.js",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev --name init_mbest_core",
     "prisma:push": "prisma db push",
