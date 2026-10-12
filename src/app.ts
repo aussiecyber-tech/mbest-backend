@@ -25,6 +25,15 @@ app.use(cors({
 app.use(express.json());
 app.use(cookieParser());
 
+// Friendly service status for the public Railway domain root.
+app.get('/', (req: Request, res: Response) => {
+  res.status(200).json({
+    status: 'ok',
+    service: 'MBEST Backend API',
+    health: '/health'
+  });
+});
+
 // Health check
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
