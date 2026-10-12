@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { getProfile, updateProfile, uploadAvatar } from '../controllers/profile.controller';
 import { authenticateToken } from '../middleware/auth';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 router.use(authenticateToken);
 

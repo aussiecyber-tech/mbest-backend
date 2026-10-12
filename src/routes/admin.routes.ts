@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDashboard, getUsers, getUserStats, createUser, deleteUser, getCalendarFilterOptions } from '../controllers/admin.controller';
+import { getDashboard, getUsers, getUser, getUserStats, createUser, updateUser, deleteUser, getCalendarFilterOptions } from '../controllers/admin.controller';
 import { getPackages, getPackage, createPackage, updatePackage, deletePackage } from '../controllers/package.controller';
 import { getClasses, getClassById, createClass, updateClass, deleteClass, getClassOptions } from '../controllers/class.controller';
 import { getSessions, createSession, updateSession, deleteSession } from '../controllers/session.controller';
@@ -9,13 +9,15 @@ import { validateBody } from '../middleware/validate';
 import { createClassSchema, updateClassSchema } from '../schemas/class.schema';
 import { createSessionSchema, updateSessionSchema } from '../schemas/session.schema';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Dashboard & User Analytics
 router.get('/dashboard', getDashboard);
 router.get('/users', getUsers);
 router.get('/users/stats', getUserStats);
+router.get('/users/:id', authenticateToken, requireRole('ADMIN'), getUser);
 router.post('/users', authenticateToken, requireRole('ADMIN'), createUser);
+router.put('/users/:id', authenticateToken, requireRole('ADMIN'), updateUser);
 router.delete('/users/:id', authenticateToken, requireRole('ADMIN'), deleteUser);
 
 // Admin Class Management Aliases
@@ -29,6 +31,9 @@ router.delete('/classes/:id', authenticateToken, requireRole('ADMIN'), deleteCla
 // Admin Calendar / Sessions Aliases
 router.get('/calendar/sessions', getSessions);
 router.get('/calendar/filter-options', authenticateToken, requireRole('ADMIN'), getCalendarFilterOptions);
+router.post('/calendar/sessions', authenticateToken, requireRole('ADMIN'), validateBody(createSessionSchema), createSession);
+router.put('/calendar/sessions/:id', authenticateToken, requireRole('ADMIN'), validateBody(updateSessionSchema), updateSession);
+router.delete('/calendar/sessions/:id', authenticateToken, requireRole('ADMIN'), deleteSession);
 router.get('/sessions', getSessions);
 router.post('/sessions', authenticateToken, requireRole('ADMIN'), validateBody(createSessionSchema), createSession);
 router.put('/sessions/:id', authenticateToken, requireRole('ADMIN'), validateBody(updateSessionSchema), updateSession);

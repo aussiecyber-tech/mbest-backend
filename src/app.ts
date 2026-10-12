@@ -76,17 +76,25 @@ app.get(['/api/parent/dashboard', '/api/v1/parent/dashboard'], (req: Request, re
 app.use(['/api/auth', '/api/v1/auth'], authRoutes);
 app.use(['/api/admin', '/api/v1/admin'], adminRoutes);
 app.use(['/api/classes', '/api/v1/classes'], classRoutes);
-app.use(['/api/parents', '/api/v1/parents'], parentRoutes);
+app.use(['/api/parent', '/api/v1/parent', '/api/parents', '/api/v1/parents'], parentRoutes);
 app.use(['/api/parent/subscription', '/api/v1/parent/subscription'], parentSubscriptionRoutes);
 app.use(['/api/sessions', '/api/v1/sessions'], sessionRoutes);
 app.use(['/api/profile', '/api/v1/profile'], profileRoutes);
 
-// Fallback for unmatched API routes
+// Never report a fake success for an endpoint that does not exist. Mock fallback
+// is opt-in for local demos only and must remain disabled on Railway.
 app.use(['/api/*', '/api/v1/*'], (req: Request, res: Response) => {
-  res.status(200).json({
-    success: true,
-    message: 'MBEST Backend API Mock Fallback OK',
-    data: req.method === 'GET' ? { data: [], total: 0 } : {}
+  if (process.env.ENABLE_MOCK_API === 'true') {
+    return res.status(200).json({
+      success: true,
+      message: 'MBEST Backend API Mock Fallback OK',
+      data: req.method === 'GET' ? { data: [], total: 0 } : {}
+    });
+  }
+
+  return res.status(404).json({
+    success: false,
+    message: `API route not implemented: ${req.method} ${req.originalUrl}`
   });
 });
 

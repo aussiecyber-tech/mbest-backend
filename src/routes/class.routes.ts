@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/rbac';
 import { validateBody } from '../middleware/validate';
 import { createClassSchema, updateClassSchema } from '../schemas/class.schema';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Middleware to extract token if present, but allow public listing if not
 const optionalAuth = (req: any, res: any, next: any) => {

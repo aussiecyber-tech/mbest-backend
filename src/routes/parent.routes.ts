@@ -3,7 +3,7 @@ import { getChildren, getChildGrades, getChildClasses, getChildSessions } from '
 import { authenticateToken } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 router.get('/children', authenticateToken, requireRole('PARENT', 'ADMIN'), getChildren);
 router.get('/children/:id/grades', authenticateToken, requireRole('PARENT', 'ADMIN'), getChildGrades);

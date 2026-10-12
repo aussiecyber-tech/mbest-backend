@@ -145,6 +145,46 @@ export const getUserStats = async (req: Request, res: Response) => {
   });
 };
 
+export const getUser = async (req: Request, res: Response) => {
+  const { id } = req.params;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { id } });
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        role: user.role.toLowerCase(),
+        avatar: user.avatarUrl,
+        is_active: true
+      }
+    });
+  } catch (error) {
+    const user = mockUsers.find(item => String(item.id) === id);
+    if (!user) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        role: String(user.role).toLowerCase(),
+        avatar: user.avatarUrl,
+        is_active: true
+      }
+    });
+  }
+};
+
 export const createUser = async (req: Request, res: Response) => {
   try {
     const { name, email, role, password, first_name, last_name } = req.body;
@@ -224,6 +264,59 @@ export const createUser = async (req: Request, res: Response) => {
         name: `${firstName} ${lastName}`.trim(),
         email: req.body.email,
         role: userRole.toLowerCase(),
+        is_active: true
+      }
+    });
+  }
+};
+
+export const updateUser = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, email, role, password, first_name, last_name } = req.body;
+  const nameParts = String(name || '').trim().split(/\s+/).filter(Boolean);
+  const firstName = first_name || nameParts[0];
+  const lastName = last_name || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined);
+
+  const data: any = {};
+  if (email !== undefined) data.email = String(email).trim().toLowerCase();
+  if (role !== undefined) data.role = String(role).toUpperCase() as Role;
+  if (firstName !== undefined) data.firstName = firstName;
+  if (lastName !== undefined) data.lastName = lastName;
+  if (password) data.passwordHash = await bcrypt.hash(password, 10);
+
+  try {
+    const user = await prisma.user.update({ where: { id }, data });
+    return res.status(200).json({
+      success: true,
+      message: 'User updated successfully',
+      data: {
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        role: user.role.toLowerCase(),
+        is_active: true
+      }
+    });
+  } catch (error: any) {
+    const index = mockUsers.findIndex(item => String(item.id) === id);
+    if (index === -1) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    mockUsers[index] = { ...mockUsers[index], ...data };
+    try {
+      fs.writeFileSync(MOCK_DB_PATH, JSON.stringify(mockUsers, null, 2));
+    } catch (writeError) {}
+
+    const user = mockUsers[index];
+    return res.status(200).json({
+      success: true,
+      message: 'User updated successfully (Mock DB)',
+      data: {
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        role: String(user.role).toLowerCase(),
         is_active: true
       }
     });

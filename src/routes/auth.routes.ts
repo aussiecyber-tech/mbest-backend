@@ -4,7 +4,7 @@ import { validateBody } from '../middleware/validate';
 import { loginSchema, registerSchema } from '../schemas/auth.schema';
 import { authenticateToken } from '../middleware/auth';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 router.post('/login', validateBody(loginSchema), login);
 router.post('/refresh', refresh);

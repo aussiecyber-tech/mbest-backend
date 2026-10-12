@@ -3,7 +3,7 @@ import { getPackages, getMySubscription, submitPayment } from '../controllers/pa
 import { authenticateToken } from '../middleware/auth';
 import { requireRole } from '../middleware/rbac';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 // Routes for /api/v1/parent/subscription
 router.get('/packages', authenticateToken, requireRole('PARENT', 'ADMIN'), getPackages);

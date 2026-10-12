@@ -5,7 +5,7 @@ import { requireRole } from '../middleware/rbac';
 import { validateBody } from '../middleware/validate';
 import { createSessionSchema, updateSessionSchema } from '../schemas/session.schema';
 
-const router = Router();
+const router: ReturnType<typeof Router> = Router();
 
 const optionalAuth = (req: any, res: any, next: any) => {
   const authHeader = req.headers['authorization'];
