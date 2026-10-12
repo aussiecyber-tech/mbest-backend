@@ -11,6 +11,8 @@ import parentRoutes from './routes/parent.routes';
 import sessionRoutes from './routes/session.routes';
 import profileRoutes from './routes/profile.routes';
 import parentSubscriptionRoutes from './routes/parent.subscription.routes';
+import resourceRoutes from './routes/resource.routes';
+import prisma from './config/prisma';
 
 const app: Express = express();
 
@@ -37,6 +39,17 @@ app.get('/', (req: Request, res: Response) => {
 // Health check
 app.get('/health', (req: Request, res: Response) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
+});
+
+// Checks the configured database connection without changing any data.
+app.get('/health/db', async (req: Request, res: Response) => {
+  try {
+    await prisma.$queryRaw`SELECT 1`;
+    return res.status(200).json({ status: 'ok', database: 'connected' });
+  } catch (error) {
+    console.error('Database health check failed:', error);
+    return res.status(503).json({ status: 'error', database: 'unavailable' });
+  }
 });
 
 // Notifications routes
@@ -89,6 +102,7 @@ app.use(['/api/parent', '/api/v1/parent', '/api/parents', '/api/v1/parents'], pa
 app.use(['/api/parent/subscription', '/api/v1/parent/subscription'], parentSubscriptionRoutes);
 app.use(['/api/sessions', '/api/v1/sessions'], sessionRoutes);
 app.use(['/api/profile', '/api/v1/profile'], profileRoutes);
+app.use(['/api/resources', '/api/v1/resources'], resourceRoutes);
 
 // Never report a fake success for an endpoint that does not exist. Mock fallback
 // is opt-in for local demos only and must remain disabled on Railway.

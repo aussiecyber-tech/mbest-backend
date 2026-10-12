@@ -1,37 +1,54 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 
+const formatResource = (resource: any) => ({
+  id: resource.id,
+  title: resource.title,
+  description: `Course material for ${resource.category}`,
+  category: resource.category,
+  file_name: resource.fileUrl.split('/').pop() || 'resource',
+  file_type: resource.fileUrl.split('.').pop() || 'file',
+  url: resource.fileUrl,
+  file_path: resource.fileUrl,
+  is_public: resource.isPublic,
+  uploader: resource.uploader
+    ? `${resource.uploader.firstName} ${resource.uploader.lastName}`.trim()
+    : 'Staff',
+  created_at: resource.createdAt.toISOString()
+});
+
 export const listResources = async (req: Request, res: Response) => {
   try {
-    const resources = await prisma.resource.findMany({
-      include: {
-        uploader: {
-          select: { firstName: true, lastName: true, email: true }
-        }
-      },
-      orderBy: { createdAt: 'desc' }
-    });
+    const page = Math.max(Number(req.query.page) || 1, 1);
+    const perPage = Math.min(Math.max(Number(req.query.per_page) || 15, 1), 100);
+    const where = req.query.category
+      ? { category: String(req.query.category) }
+      : undefined;
 
-    const formatted = resources.map(r => ({
-      id: r.id,
-      title: r.title,
-      description: `Course material for ${r.category}`,
-      category: r.category,
-      file_name: r.fileUrl.split('/').pop() || 'resource.pdf',
-      file_size: '2.4 MB',
-      file_type: 'pdf',
-      url: r.fileUrl,
-      file_path: r.fileUrl,
-      is_public: r.isPublic,
-      uploader: r.uploader ? `${r.uploader.firstName} ${r.uploader.lastName}`.trim() : 'Staff',
-      created_at: r.createdAt.toISOString()
-    }));
+    const [resources, total] = await Promise.all([
+      prisma.resource.findMany({
+        where,
+        include: {
+          uploader: {
+            select: { firstName: true, lastName: true, email: true }
+          }
+        },
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * perPage,
+        take: perPage
+      }),
+      prisma.resource.count({ where })
+    ]);
+
+    const formatted = resources.map(formatResource);
 
     return res.status(200).json({
       success: true,
       data: {
         data: formatted,
-        total: formatted.length
+        total,
+        current_page: page,
+        per_page: perPage
       }
     });
   } catch (error: any) {
@@ -40,9 +57,54 @@ export const listResources = async (req: Request, res: Response) => {
   }
 };
 
+export const getResource = async (req: Request, res: Response) => {
+  try {
+    const resource = await prisma.resource.findUnique({
+      where: { id: req.params.id },
+      include: {
+        uploader: { select: { firstName: true, lastName: true, email: true } }
+      }
+    });
+
+    if (!resource) {
+      return res.status(404).json({ success: false, message: 'Resource not found' });
+    }
+
+    return res.status(200).json({ success: true, data: { data: formatResource(resource) } });
+  } catch (error: any) {
+    console.error('getResource error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve resource' });
+  }
+};
+
+export const updateResource = async (req: Request, res: Response) => {
+  try {
+    const { title, category, fileUrl, url, isPublic, is_public } = req.body || {};
+    const resource = await prisma.resource.update({
+      where: { id: req.params.id },
+      data: {
+        ...(title !== undefined && { title: String(title) }),
+        ...(category !== undefined && { category: String(category) }),
+        ...((fileUrl !== undefined || url !== undefined) && { fileUrl: String(fileUrl || url) }),
+        ...((isPublic !== undefined || is_public !== undefined) && {
+          isPublic: String(isPublic ?? is_public) === 'true'
+        })
+      },
+      include: {
+        uploader: { select: { firstName: true, lastName: true, email: true } }
+      }
+    });
+
+    return res.status(200).json({ success: true, data: { data: formatResource(resource) } });
+  } catch (error: any) {
+    console.error('updateResource error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to update resource' });
+  }
+};
+
 export const createResource = async (req: Request, res: Response) => {
   try {
-    const { title, category, fileUrl, isPublic } = req.body;
+    const { title, category, fileUrl, url, isPublic, is_public } = req.body || {};
     const uploaderId = req.user?.userId;
 
     if (!uploaderId) {
@@ -54,8 +116,8 @@ export const createResource = async (req: Request, res: Response) => {
         uploaderId,
         title: title || 'New Learning Material',
         category: category || 'General',
-        fileUrl: fileUrl || 'https://example.com/files/document.pdf',
-        isPublic: isPublic !== undefined ? Boolean(isPublic) : true,
+        fileUrl: fileUrl || url || 'https://example.com/files/document.pdf',
+        isPublic: String(isPublic ?? is_public ?? 'true') === 'true',
       }
     });
 
