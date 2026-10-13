@@ -139,6 +139,10 @@ export const login = async (req: Request, res: Response) => {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
     }
 
+    if (user.isActive === false) {
+      return res.status(403).json({ success: false, message: 'This account is inactive. Please contact an administrator.' });
+    }
+
     let isMatch = false;
     if (user.passwordHash) {
       try {
@@ -240,6 +244,10 @@ export const refresh = async (req: Request, res: Response) => {
 
     if (!savedToken || savedToken.revoked || savedToken.expiresAt < new Date()) {
       return res.status(403).json({ success: false, message: 'Invalid or expired refresh token' });
+    }
+
+    if (savedToken.user.isActive === false) {
+      return res.status(403).json({ success: false, message: 'This account is inactive. Please contact an administrator.' });
     }
 
     try {

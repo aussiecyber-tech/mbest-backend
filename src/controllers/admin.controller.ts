@@ -11,10 +11,10 @@ const MOCK_DB_PATH = path.join(__dirname, '..', '..', 'mock-users.json');
 
 let mockUsers: any[] = [];
 const defaultMockUsers = [
-  { id: 'demo-admin-uuid-1', email: 'admin@mbest.com', role: Role.ADMIN, firstName: 'Super', lastName: 'Administrator', avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150', createdAt: new Date() },
-  { id: 'demo-tutor-uuid-2', email: 'tutor@mbest.com', role: Role.TUTOR, firstName: 'Dr. Robert', lastName: 'Chen', avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', createdAt: new Date() },
-  { id: 'demo-parent-uuid-3', email: 'parent@mbest.com', role: Role.PARENT, firstName: 'Sarah', lastName: 'Jenkins', avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150', createdAt: new Date() },
-  { id: 'demo-student-uuid-4', email: 'student@mbest.com', role: Role.STUDENT, firstName: 'Alex', lastName: 'Johnson', avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150', createdAt: new Date() }
+  { id: 'demo-admin-uuid-1', email: 'admin@mbest.com', role: Role.ADMIN, firstName: 'Super', lastName: 'Administrator', avatarUrl: 'https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?w=150', isActive: true, createdAt: new Date() },
+  { id: 'demo-tutor-uuid-2', email: 'tutor@mbest.com', role: Role.TUTOR, firstName: 'Dr. Robert', lastName: 'Chen', avatarUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=150', isActive: true, createdAt: new Date() },
+  { id: 'demo-parent-uuid-3', email: 'parent@mbest.com', role: Role.PARENT, firstName: 'Sarah', lastName: 'Jenkins', avatarUrl: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150', isActive: true, createdAt: new Date() },
+  { id: 'demo-student-uuid-4', email: 'student@mbest.com', role: Role.STUDENT, firstName: 'Alex', lastName: 'Johnson', avatarUrl: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=150', isActive: true, createdAt: new Date() }
 ];
 
 try {
@@ -59,6 +59,9 @@ export const getUsers = async (req: Request, res: Response) => {
     if (roleQuery && Object.values(Role).includes(roleQuery as Role)) {
       where.role = roleQuery as Role;
     }
+    if (req.query.is_active !== undefined) {
+      where.isActive = String(req.query.is_active).toLowerCase() === 'true';
+    }
 
     let users: any[] = [];
     try {
@@ -72,6 +75,7 @@ export const getUsers = async (req: Request, res: Response) => {
           firstName: true,
           lastName: true,
           avatarUrl: true,
+          isActive: true,
           createdAt: true,
         }
       });
@@ -89,6 +93,7 @@ export const getUsers = async (req: Request, res: Response) => {
       email: u.email,
       role: (u.role || 'student').toLowerCase(),
       avatar: u.avatarUrl,
+      is_active: u.isActive !== false,
       tutor: u.role === 'TUTOR' ? {
         id: u.id,
         user_id: u.id,
@@ -162,7 +167,7 @@ export const getUser = async (req: Request, res: Response) => {
         email: user.email,
         role: user.role.toLowerCase(),
         avatar: user.avatarUrl,
-        is_active: true
+        is_active: user.isActive
       }
     });
   } catch (error) {
@@ -179,7 +184,7 @@ export const getUser = async (req: Request, res: Response) => {
         email: user.email,
         role: String(user.role).toLowerCase(),
         avatar: user.avatarUrl,
-        is_active: true
+        is_active: user.isActive !== false
       }
     });
   }
@@ -187,7 +192,7 @@ export const getUser = async (req: Request, res: Response) => {
 
 export const createUser = async (req: Request, res: Response) => {
   try {
-    const { name, email, role, password, first_name, last_name } = req.body;
+    const { name, email, role, password, first_name, last_name, is_active } = req.body;
     
     if (!email || !role || !password) {
       return res.status(400).json({ success: false, message: 'Missing required fields' });
@@ -211,7 +216,8 @@ export const createUser = async (req: Request, res: Response) => {
         passwordHash,
         role: userRole,
         firstName: firstName || 'New',
-        lastName: lastName || 'User'
+        lastName: lastName || 'User',
+        isActive: is_active !== false
       }
     });
 
@@ -223,7 +229,7 @@ export const createUser = async (req: Request, res: Response) => {
         name: `${newUser.firstName} ${newUser.lastName}`.trim(),
         email: newUser.email,
         role: newUser.role.toLowerCase(),
-        is_active: true
+        is_active: newUser.isActive
       }
     });
 
@@ -249,6 +255,7 @@ export const createUser = async (req: Request, res: Response) => {
       firstName,
       lastName,
       avatarUrl: `https://ui-avatars.com/api/?name=${firstName}+${lastName}&background=random`,
+      isActive: req.body.is_active !== false,
       createdAt: new Date()
     } as any);
 
@@ -264,7 +271,7 @@ export const createUser = async (req: Request, res: Response) => {
         name: `${firstName} ${lastName}`.trim(),
         email: req.body.email,
         role: userRole.toLowerCase(),
-        is_active: true
+        is_active: req.body.is_active !== false
       }
     });
   }
@@ -272,7 +279,7 @@ export const createUser = async (req: Request, res: Response) => {
 
 export const updateUser = async (req: Request, res: Response) => {
   const { id } = req.params;
-  const { name, email, role, password, first_name, last_name } = req.body;
+  const { name, email, role, password, first_name, last_name, is_active } = req.body;
   const nameParts = String(name || '').trim().split(/\s+/).filter(Boolean);
   const firstName = first_name || nameParts[0];
   const lastName = last_name || (nameParts.length > 1 ? nameParts.slice(1).join(' ') : undefined);
@@ -282,6 +289,7 @@ export const updateUser = async (req: Request, res: Response) => {
   if (role !== undefined) data.role = String(role).toUpperCase() as Role;
   if (firstName !== undefined) data.firstName = firstName;
   if (lastName !== undefined) data.lastName = lastName;
+  if (is_active !== undefined) data.isActive = Boolean(is_active);
   if (password) data.passwordHash = await bcrypt.hash(password, 10);
 
   try {
@@ -294,7 +302,7 @@ export const updateUser = async (req: Request, res: Response) => {
         name: `${user.firstName} ${user.lastName}`.trim(),
         email: user.email,
         role: user.role.toLowerCase(),
-        is_active: true
+        is_active: user.isActive
       }
     });
   } catch (error: any) {
@@ -317,7 +325,7 @@ export const updateUser = async (req: Request, res: Response) => {
         name: `${user.firstName} ${user.lastName}`.trim(),
         email: user.email,
         role: String(user.role).toLowerCase(),
-        is_active: true
+        is_active: user.isActive !== false
       }
     });
   }
