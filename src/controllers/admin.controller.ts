@@ -150,6 +150,28 @@ export const getUserStats = async (req: Request, res: Response) => {
   });
 };
 
+export const getUserRecipients = async (_req: Request, res: Response) => {
+  try {
+    const users = await prisma.user.findMany({
+      where: { isActive: true },
+      select: { id: true, firstName: true, lastName: true, email: true, role: true },
+      orderBy: { firstName: 'asc' }
+    });
+    return res.status(200).json({
+      success: true,
+      data: users.map(user => ({
+        id: user.id,
+        name: `${user.firstName} ${user.lastName}`.trim(),
+        email: user.email,
+        role: user.role.toLowerCase()
+      }))
+    });
+  } catch (error: any) {
+    console.error('getUserRecipients error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve recipients' });
+  }
+};
+
 export const getUser = async (req: Request, res: Response) => {
   const { id } = req.params;
 
