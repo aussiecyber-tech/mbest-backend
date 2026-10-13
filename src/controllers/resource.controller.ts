@@ -1,6 +1,27 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
 
+const parseMultipart = (req: Request) => {
+  const contentType = req.headers['content-type'] || '';
+  const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!match || !Buffer.isBuffer(req.body)) return null;
+  const raw = req.body.toString('latin1');
+  const fields: Record<string, string> = {};
+  let file: { name: string; type: string; data: Buffer } | null = null;
+  for (const part of raw.split(`--${match[1] || match[2]}`)) {
+    const divider = part.indexOf('\r\n\r\n');
+    if (divider < 0) continue;
+    const headers = part.slice(0, divider);
+    const name = headers.match(/name="([^"]+)"/i)?.[1];
+    if (!name) continue;
+    let body = part.slice(divider + 4); if (body.endsWith('\r\n')) body = body.slice(0, -2);
+    const filename = headers.match(/filename="([^"]*)"/i)?.[1];
+    if (filename !== undefined) file = { name: filename, type: headers.match(/Content-Type:\s*([^\r\n]+)/i)?.[1] || 'application/octet-stream', data: Buffer.from(body, 'latin1') };
+    else fields[name] = body;
+  }
+  return { fields, file };
+};
+
 const formatResource = (resource: any) => ({
   id: resource.id,
   title: resource.title,
@@ -104,22 +125,37 @@ export const updateResource = async (req: Request, res: Response) => {
 
 export const createResource = async (req: Request, res: Response) => {
   try {
-    const { title, category, fileUrl, url, isPublic, is_public } = req.body || {};
+    const multipart = parseMultipart(req);
+    const body = multipart?.fields || req.body || {};
+    const { title, category, fileUrl, url, isPublic, is_public } = body;
     const uploaderId = req.user?.userId;
 
     if (!uploaderId) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    const newResource = await prisma.resource.create({
+    if (!title || (!multipart?.file?.data.length && !fileUrl && !url)) {
+      return res.status(400).json({ success: false, message: 'Resource title and a file or URL are required' });
+    }
+    if (multipart?.file && multipart.file.data.length > 10 * 1024 * 1024) {
+      return res.status(413).json({ success: false, message: 'Resource file must be 10 MB or smaller' });
+    }
+
+    let newResource = await prisma.resource.create({
       data: {
         uploaderId,
-        title: title || 'New Learning Material',
+        title: String(title),
         category: category || 'General',
-        fileUrl: fileUrl || url || 'https://example.com/files/document.pdf',
+        fileUrl: fileUrl || url || 'pending-upload',
         isPublic: String(isPublic ?? is_public ?? 'true') === 'true',
       }
     });
+    if (multipart?.file) {
+      await prisma.appRecord.create({
+        data: { kind: 'resource_file', ownerId: newResource.id, data: { name: multipart.file.name, type: multipart.file.type, content: multipart.file.data.toString('base64') } },
+      });
+      newResource = await prisma.resource.update({ where: { id: newResource.id }, data: { fileUrl: `/api/v1/resources/${newResource.id}/download` } });
+    }
 
     return res.status(201).json({
       success: true,
@@ -131,10 +167,25 @@ export const createResource = async (req: Request, res: Response) => {
   }
 };
 
+export const downloadResource = async (req: Request, res: Response) => {
+  const resource = await prisma.resource.findUnique({ where: { id: req.params.id } });
+  if (!resource) return res.status(404).json({ success: false, message: 'Resource not found' });
+  const file = await prisma.appRecord.findFirst({ where: { kind: 'resource_file', ownerId: resource.id } });
+  const data = file?.data && typeof file.data === 'object' ? file.data as any : null;
+  if (!data?.content) {
+    if (/^https?:\/\//i.test(resource.fileUrl)) return res.redirect(resource.fileUrl);
+    return res.status(404).json({ success: false, message: 'Resource file is unavailable' });
+  }
+  res.setHeader('Content-Type', data.type || 'application/octet-stream');
+  res.setHeader('Content-Disposition', `attachment; filename="${String(data.name || 'resource').replace(/["\r\n]/g, '')}"`);
+  return res.send(Buffer.from(data.content, 'base64'));
+};
+
 export const deleteResource = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
     await prisma.resource.delete({ where: { id } });
+    await prisma.appRecord.deleteMany({ where: { kind: 'resource_file', ownerId: id } });
     return res.status(200).json({ success: true, message: 'Resource deleted successfully' });
   } catch (error: any) {
     console.error('deleteResource error:', error);

@@ -78,7 +78,7 @@ export const getClasses = async (req: Request, res: Response) => {
     const formatted = classes.map(c => ({
       id: c.id,
       name: c.name,
-      code: c.name.split(' ').map(w => w[0]).join('').toUpperCase() + '-101',
+      code: c.code,
       subject: c.subject,
       category: c.subject,
       description: c.description,
@@ -153,6 +153,7 @@ export const getClassById = async (req: Request, res: Response) => {
     const formatted = {
       id: c.id,
       name: c.name,
+      code: c.code,
       subject: c.subject,
       description: c.description,
       status: 'active',
@@ -194,7 +195,7 @@ export const getClassById = async (req: Request, res: Response) => {
 
 export const createClass = async (req: Request, res: Response) => {
   try {
-    const { name, subject, tutorId, description, yearLevel, maxStudents, startDate, endDate } = req.body;
+    const { name, code, subject, tutorId, description, yearLevel, maxStudents, startDate, endDate } = req.body;
 
     let validTutorId = tutorId;
     if (validTutorId) {
@@ -218,6 +219,7 @@ export const createClass = async (req: Request, res: Response) => {
     const newClass = await prisma.class.create({
       data: {
         name,
+        code: String(code || `${name.split(/\s+/).map((word: string) => word[0]).join('').toUpperCase()}-${Math.random().toString(36).slice(2, 6).toUpperCase()}`),
         subject,
         tutorId: validTutorId,
         description: enrichedDescription || null,
@@ -230,6 +232,7 @@ export const createClass = async (req: Request, res: Response) => {
     const formatted = {
       id: newClass.id,
       name: newClass.name,
+      code: newClass.code,
       subject: newClass.subject,
       year_level: yearLevel || null,
       max_students: maxStudents || null,
@@ -262,12 +265,13 @@ export const createClass = async (req: Request, res: Response) => {
 export const updateClass = async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, subject, tutorId, description } = req.body;
+    const { name, code, subject, tutorId, description } = req.body;
 
     const updated = await prisma.class.update({
       where: { id },
       data: {
         ...(name && { name }),
+        ...(code && { code }),
         ...(subject && { subject }),
         ...(tutorId !== undefined && { tutorId }),
         ...(description !== undefined && { description }),

@@ -84,6 +84,7 @@ model ParentStudent {
 model Class {
   id          String            @id @default(uuid())
   name        String
+  code        String?           @unique
   subject     String
   tutorId     String?           @map("tutor_id")
   description String?

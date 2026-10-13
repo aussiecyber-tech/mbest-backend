@@ -1,5 +1,7 @@
 import { Request, Response } from 'express';
+import { randomBytes } from 'crypto';
 import prisma from '../config/prisma';
+import { findPackage, formatRecord, listPackages } from '../services/subscription.service';
 
 export const getChildren = async (req: Request, res: Response) => {
   try {
@@ -202,14 +204,9 @@ export const getChildSessions = async (req: Request, res: Response) => {
 
 export const getPackages = async (req: Request, res: Response) => {
   try {
-    const packages = [
-      { id: 'pkg_1', name: 'Basic Plan', price: 99.00, billing_cycle: 'monthly', features: ['1 Student', 'Math & English', 'Basic Support'] },
-      { id: 'pkg_2', name: 'Premium Plan', price: 149.00, billing_cycle: 'monthly', features: ['Unlimited Students', 'All Subjects', '24/7 Support'] }
-    ];
-    
     return res.status(200).json({
       success: true,
-      data: packages
+      data: await listPackages(true)
     });
   } catch (error: any) {
     console.error('getPackages error:', error);
@@ -217,16 +214,38 @@ export const getPackages = async (req: Request, res: Response) => {
   }
 };
 
+export const getPackage = async (req: Request, res: Response) => {
+  try {
+    const pkg = await findPackage(req.params.id);
+    if (!pkg || pkg.is_active === false) {
+      return res.status(404).json({ success: false, message: 'Package not found' });
+    }
+    return res.json({ success: true, data: { data: pkg } });
+  } catch (error: any) {
+    console.error('getPackage error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve package' });
+  }
+};
+
 export const getMySubscription = async (req: Request, res: Response) => {
   try {
+    const parentId = req.user!.userId;
+    const latest = await prisma.appRecord.findFirst({
+      where: { kind: 'payment', ownerId: parentId },
+      orderBy: { createdAt: 'desc' },
+    });
+    const payment = latest ? formatRecord(latest) : null;
+    const pkg = payment?.package_id ? await findPackage(String(payment.package_id)) : null;
+    const active = payment?.status === 'approved';
+    const studentCount = await prisma.parentStudent.count({ where: { parentId } });
     return res.status(200).json({
       success: true,
       data: {
-        package: null, // null means no active subscription
-        status: 'pending',
-        current_student_count: 0,
-        limits: null,
-        pending_payment: null
+        package: active ? pkg : null,
+        status: active ? 'active' : payment?.status || 'none',
+        current_student_count: studentCount,
+        limits: active && pkg ? { students: pkg.student_limit || 0, allows_one_on_one: !!pkg.allows_one_on_one } : null,
+        pending_payment: payment?.status === 'pending' ? payment : null
       }
     });
   } catch (error: any) {
@@ -235,12 +254,82 @@ export const getMySubscription = async (req: Request, res: Response) => {
   }
 };
 
+const parseMultipart = (req: Request) => {
+  const contentType = req.headers['content-type'] || '';
+  const match = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/i);
+  if (!match || !Buffer.isBuffer(req.body)) return null;
+  const boundary = `--${match[1] || match[2]}`;
+  const raw = req.body.toString('latin1');
+  const fields: Record<string, string> = {};
+  let file: { name: string; type: string; data: Buffer } | null = null;
+  for (const part of raw.split(boundary)) {
+    const divider = part.indexOf('\r\n\r\n');
+    if (divider < 0) continue;
+    const headers = part.slice(0, divider);
+    const name = headers.match(/name="([^"]+)"/i)?.[1];
+    if (!name) continue;
+    let body = part.slice(divider + 4);
+    if (body.endsWith('\r\n')) body = body.slice(0, -2);
+    const filename = headers.match(/filename="([^"]*)"/i)?.[1];
+    if (filename !== undefined) {
+      file = {
+        name: filename,
+        type: headers.match(/Content-Type:\s*([^\r\n]+)/i)?.[1] || 'application/octet-stream',
+        data: Buffer.from(body, 'latin1'),
+      };
+    } else {
+      fields[name] = body;
+    }
+  }
+  return { fields, file };
+};
+
 export const submitPayment = async (req: Request, res: Response) => {
   try {
-    return res.status(200).json({
+    const parsed = parseMultipart(req);
+    const packageId = parsed?.fields.package_id || req.body?.package_id;
+    const pkg = packageId ? await findPackage(String(packageId)) : null;
+    if (!pkg || pkg.is_active === false) {
+      return res.status(400).json({ success: false, message: 'Please select a valid active package' });
+    }
+    if (!parsed?.file?.data.length) {
+      return res.status(400).json({ success: false, message: 'Payment slip file is required' });
+    }
+    if (parsed.file.data.length > 5 * 1024 * 1024) {
+      return res.status(413).json({ success: false, message: 'Payment slip must be 5 MB or smaller' });
+    }
+    if (!/^image\/(png|jpeg|jpg|webp)$/i.test(parsed.file.type) && parsed.file.type !== 'application/pdf') {
+      return res.status(400).json({ success: false, message: 'Payment slip must be a PNG, JPG, WEBP, or PDF file' });
+    }
+
+    const parent = await prisma.user.findUnique({ where: { id: req.user!.userId } });
+    const now = new Date().toISOString();
+    const slipToken = randomBytes(24).toString('hex');
+    const data = {
+      package_id: pkg.id,
+      package: pkg,
+      parent_id: req.user!.userId,
+      parent: parent ? { id: parent.id, name: `${parent.firstName} ${parent.lastName}`.trim(), email: parent.email } : null,
+      amount: Number(pkg.price || 0),
+      status: 'pending',
+      payment_slip_name: parsed.file.name,
+      payment_slip_type: parsed.file.type,
+      payment_slip_data: parsed.file.data.toString('base64'),
+      payment_slip_token: slipToken,
+      submitted_at: now,
+    };
+    const record = await prisma.appRecord.create({
+      data: { kind: 'payment', ownerId: req.user!.userId, data },
+    });
+    const saved = await prisma.appRecord.update({
+      where: { id: record.id },
+      data: { data: { ...data, payment_slip_url: `/api/v1/payment-slips/${record.id}?token=${slipToken}` } },
+    });
+
+    return res.status(201).json({
       success: true,
       message: 'Payment slip submitted successfully! Awaiting admin approval.',
-      data: { status: 'pending' }
+      data: { data: formatRecord(saved) }
     });
   } catch (error: any) {
     console.error('submitPayment error:', error);

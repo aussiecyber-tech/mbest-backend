@@ -22,12 +22,16 @@ const router: ReturnType<typeof Router> = Router();
 });
 router.use(authenticateToken);
 
-const recordData = (record: any) => ({
-  ...(record.data && typeof record.data === 'object' ? record.data : {}),
-  id: record.id,
-  created_at: record.createdAt?.toISOString?.() || record.created_at,
-  updated_at: record.updatedAt?.toISOString?.() || record.updated_at,
-});
+const recordData = (record: any) => {
+  const raw = record.data && typeof record.data === 'object' ? record.data as any : {};
+  const { payment_slip_data: _data, payment_slip_token: _token, ...safe } = raw;
+  return {
+    ...safe,
+    id: record.id,
+    created_at: record.createdAt?.toISOString?.() || record.created_at,
+    updated_at: record.updatedAt?.toISOString?.() || record.updated_at,
+  };
+};
 
 const list = async (kind: string, ownerId?: string) => {
   const records = await prisma.appRecord.findMany({
@@ -105,29 +109,89 @@ router.post('/tutor/lesson-requests/:id/approve', async (req, res) => res.json({
 router.post('/tutor/lesson-requests/:id/decline', async (req, res) => res.json({ success: true, data: { data: await updateRecord('lesson_request', req.params.id, { status: 'declined', ...(req.body || {}) }) } }));
 
 // Billing and payments.
-router.get('/admin/billing/summary', async (_req, res) => res.json({ success: true, data: { total_revenue: 0, pending_revenue: 0, overdue_revenue: 0, revenue_this_month: 0 } }));
-router.get('/admin/billing/package-stats', async (_req, res) => res.json({ success: true, data: { packages: [], total_revenue_from_packages: 0, total_active_students: 0 } }));
-router.get(['/admin/billing/invoices', '/tutor/invoices', '/parent/billing/invoices'], async (_req, res) => res.json(paged(await list('invoice'))));
+router.get('/admin/billing/summary', async (_req, res) => {
+  const payments = await list('payment');
+  const amount = (item: any) => Number(item.amount || item.package?.price || 0);
+  const approved = payments.filter(item => item.status === 'approved');
+  const pending = payments.filter(item => item.status === 'pending');
+  const monthStart = new Date(); monthStart.setDate(1); monthStart.setHours(0, 0, 0, 0);
+  res.json({ success: true, data: {
+    total_revenue: approved.reduce((sum, item) => sum + amount(item), 0),
+    pending_revenue: pending.reduce((sum, item) => sum + amount(item), 0),
+    overdue_revenue: 0,
+    revenue_this_month: approved.filter(item => new Date(item.updated_at) >= monthStart).reduce((sum, item) => sum + amount(item), 0),
+  } });
+});
+router.get('/admin/billing/package-stats', async (_req, res) => {
+  const payments = (await list('payment')).filter(item => item.status === 'approved');
+  const packages = new Map<string, { id: string; name: string; revenue: number; students: number }>();
+  for (const payment of payments) {
+    const id = String(payment.package_id || 'unknown');
+    const current = packages.get(id) || { id, name: payment.package?.name || 'Package', revenue: 0, students: 0 };
+    current.revenue += Number(payment.amount || payment.package?.price || 0); current.students += 1; packages.set(id, current);
+  }
+  const rows = [...packages.values()];
+  res.json({ success: true, data: { packages: rows, total_revenue_from_packages: rows.reduce((sum, item) => sum + item.revenue, 0), total_active_students: rows.reduce((sum, item) => sum + item.students, 0) } });
+});
+router.get(['/admin/billing/invoices', '/tutor/invoices', '/parent/billing/invoices'], async (req, res) => res.json(paged(await list('invoice', req.path.startsWith('/parent') ? req.user!.userId : undefined))));
 router.post(['/admin/billing/invoices', '/tutor/invoices'], async (req, res) => res.status(201).json({ success: true, data: { data: await createRecord('invoice', req, { status: 'draft' }) } }));
 router.get('/admin/billing/invoices/:id', async (req, res) => { const item = await getRecord('invoice', req.params.id); return item ? res.json({ success: true, data: item }) : res.status(404).json({ success: false, message: 'Invoice not found' }); });
 router.put('/admin/billing/invoices/:id', async (req, res) => res.json({ success: true, data: await updateRecord('invoice', req.params.id, req.body) }));
-router.get(['/admin/payments', '/parent/billing/payments'], async (_req, res) => res.json(paged(await list('payment'))));
+router.get(['/admin/payments', '/parent/billing/payments'], async (req, res) => res.json(paged(await list('payment', req.path.startsWith('/parent') ? req.user!.userId : undefined))));
 router.get('/admin/payments/:id', async (req, res) => { const item = await getRecord('payment', req.params.id); return item ? res.json({ success: true, data: item }) : res.status(404).json({ success: false, message: 'Payment not found' }); });
 router.post('/admin/payments/:id/approve', async (req, res) => res.json({ success: true, data: { data: await updateRecord('payment', req.params.id, { status: 'approved', ...(req.body || {}) }) } }));
 router.post('/admin/payments/:id/reject', async (req, res) => res.json({ success: true, data: { data: await updateRecord('payment', req.params.id, { status: 'rejected', ...(req.body || {}) }) } }));
 
 // Role-specific class aliases and enrollment actions.
-router.get(['/student/classes', '/tutor/classes', '/student/classes/available'], getClasses);
+router.get(['/student/classes', '/tutor/classes'], getClasses);
+router.get('/student/classes/available', async (req, res) => {
+  if (req.user?.role !== 'STUDENT') return res.status(403).json({ success: false, message: 'Student access required' });
+  const rows = await prisma.class.findMany({
+    where: { enrollments: { none: { studentId: req.user.userId } } },
+    include: { tutor: true, enrollments: true },
+    orderBy: { createdAt: 'desc' },
+  });
+  const classes = rows.map(item => ({
+    id: item.id,
+    name: item.name,
+    code: item.code,
+    subject: item.subject,
+    description: item.description,
+    tutor: item.tutor ? { id: item.tutor.id, name: `${item.tutor.firstName} ${item.tutor.lastName}`.trim(), email: item.tutor.email } : null,
+    students_count: item.enrollments.length,
+    status: 'active',
+  }));
+  res.json({ success: true, data: classes });
+});
 router.get(['/student/classes/:id', '/tutor/classes/:id'], getClassById);
 router.post('/student/classes/:id/enroll', async (req, res) => {
+  if (req.user?.role !== 'STUDENT') return res.status(403).json({ success: false, message: 'Student access required' });
+  const classExists = await prisma.class.count({ where: { id: req.params.id } });
+  if (!classExists) return res.status(404).json({ success: false, message: 'Class not found' });
   const enrollment = await prisma.classEnrollment.upsert({
     where: { classId_studentId: { classId: req.params.id, studentId: req.user!.userId } },
     update: {}, create: { classId: req.params.id, studentId: req.user!.userId },
   });
   res.json({ success: true, data: enrollment });
 });
-router.post('/student/classes/:id/unenroll', async (req, res) => { await prisma.classEnrollment.deleteMany({ where: { classId: req.params.id, studentId: req.user!.userId } }); res.json({ success: true }); });
-router.post('/student/classes/join', async (req, res) => res.status(400).json({ success: false, message: 'Please select a class from Available Classes.' }));
+router.post('/student/classes/:id/unenroll', async (req, res) => {
+  if (req.user?.role !== 'STUDENT') return res.status(403).json({ success: false, message: 'Student access required' });
+  await prisma.classEnrollment.deleteMany({ where: { classId: req.params.id, studentId: req.user.userId } });
+  res.json({ success: true });
+});
+router.post('/student/classes/join', async (req, res) => {
+  if (req.user?.role !== 'STUDENT') return res.status(403).json({ success: false, message: 'Student access required' });
+  const code = String(req.body?.class_code || '').trim();
+  if (!code) return res.status(400).json({ success: false, message: 'Class code is required' });
+  const classItem = await prisma.class.findFirst({ where: { code: { equals: code, mode: 'insensitive' } } });
+  if (!classItem) return res.status(404).json({ success: false, message: 'No class was found with that code' });
+  const enrollment = await prisma.classEnrollment.upsert({
+    where: { classId_studentId: { classId: classItem.id, studentId: req.user.userId } },
+    update: {},
+    create: { classId: classItem.id, studentId: req.user.userId },
+  });
+  res.json({ success: true, data: enrollment });
+});
 router.get('/tutor/classes/:id/students', async (req, res) => {
   const rows = await prisma.classEnrollment.findMany({ where: { classId: req.params.id }, include: { student: true } });
   res.json({ success: true, data: rows.map(row => ({ id: row.student.id, name: `${row.student.firstName} ${row.student.lastName}`.trim(), email: row.student.email })) });
@@ -157,7 +221,19 @@ router.post('/tutor/assignments', async (req, res) => {
   const assignment = await prisma.assignment.create({ data: { classId: String(req.body.class_id || req.body.classId), title: String(req.body.title || 'Assignment'), description: req.body.description || null, dueDate: new Date(req.body.due_date || req.body.dueDate) } });
   res.status(201).json({ success: true, data: { data: assignment } });
 });
-router.get(['/student/attendance', '/tutor/attendance', '/tutor/attendance-records', '/admin/attendance', '/admin/attendance/students'], async (_req, res) => res.json(paged([])));
+router.get(['/student/attendance', '/tutor/attendance', '/tutor/attendance-records', '/admin/attendance', '/admin/attendance/students'], async (req, res) => {
+  const where = req.path.startsWith('/student')
+    ? { studentId: req.user!.userId }
+    : req.path.startsWith('/tutor')
+      ? { session: { tutorId: req.user!.userId } }
+      : {};
+  const rows = await prisma.attendance.findMany({ where, include: { student: true, session: { include: { class: true } } } });
+  res.json(paged(rows.map(row => ({
+    id: row.id, status: row.status.toLowerCase(), student_id: row.studentId,
+    student: { id: row.student.id, name: `${row.student.firstName} ${row.student.lastName}`.trim(), email: row.student.email },
+    session: row.session, class: row.session.class,
+  }))));
+});
 router.get('/student/grades', async (req, res) => {
   const grades = await prisma.assignmentSubmission.findMany({ where: { studentId: req.user!.userId }, include: { assignment: true } });
   res.json(paged(grades));
@@ -201,8 +277,17 @@ router.get('/tutor/students', async (req, res) => {
   const unique = [...new Map(rows.map(row => [row.student.id, row.student])).values()];
   res.json(paged(unique.map(student => ({ id: student.id, name: `${student.firstName} ${student.lastName}`.trim(), email: student.email }))));
 });
-router.get('/tutor/hours', async (_req, res) => res.json({ success: true, data: { total_hours: 0, this_week: 0, this_month: 0 } }));
-router.get('/tutor/lesson-history', async (_req, res) => res.json(paged([])));
+router.get('/tutor/hours', async (req, res) => {
+  const sessions = await prisma.session.findMany({ where: { tutorId: req.user!.userId } });
+  const now = new Date(), weekStart = new Date(now), monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  weekStart.setDate(now.getDate() - ((now.getDay() + 6) % 7)); weekStart.setHours(0, 0, 0, 0);
+  const duration = (items: typeof sessions) => items.reduce((sum, item) => sum + Math.max(0, item.endTime.getTime() - item.startTime.getTime()) / 3600000, 0);
+  res.json({ success: true, data: { total_hours: duration(sessions), this_week: duration(sessions.filter(item => item.startTime >= weekStart)), this_month: duration(sessions.filter(item => item.startTime >= monthStart)) } });
+});
+router.get('/tutor/lesson-history', async (req, res) => {
+  const rows = await prisma.session.findMany({ where: { tutorId: req.user!.userId, endTime: { lt: new Date() } }, include: { class: true, attendances: true }, orderBy: { startTime: 'desc' } });
+  res.json(paged(rows));
+});
 
 router.get('/admin/tutors/:id', async (req, res) => {
   const user = await prisma.user.findFirst({ where: { id: req.params.id, role: 'TUTOR' } });
@@ -282,12 +367,19 @@ router.get('/parent/children/:id/assignments/:assignmentId', async (req, res) =>
   const item = await prisma.assignment.findUnique({ where: { id: req.params.assignmentId }, include: { class: true } });
   return item ? res.json({ success: true, data: item }) : res.status(404).json({ success: false, message: 'Assignment not found' });
 });
-router.get('/parent/children/:id/classes/available', getClasses);
+router.get('/parent/children/:id/classes/available', async (req, res) => {
+  const allowed = req.user?.role === 'ADMIN' || await prisma.parentStudent.count({ where: { parentId: req.user!.userId, studentId: req.params.id } });
+  if (!allowed) return res.status(403).json({ success: false, message: 'Access denied to this student' });
+  const rows = await prisma.class.findMany({ where: { enrollments: { none: { studentId: req.params.id } } }, include: { tutor: true } });
+  res.json({ success: true, data: rows });
+});
 router.get('/parent/children/:id/classes/:classId', async (req, res) => {
   const item = await prisma.class.findUnique({ where: { id: req.params.classId }, include: { tutor: true, sessions: true } });
   return item ? res.json({ success: true, data: item }) : res.status(404).json({ success: false, message: 'Class not found' });
 });
 router.post('/parent/children/:id/classes/:classId/enroll', async (req, res) => {
+  const allowed = req.user?.role === 'ADMIN' || await prisma.parentStudent.count({ where: { parentId: req.user!.userId, studentId: req.params.id } });
+  if (!allowed) return res.status(403).json({ success: false, message: 'Access denied to this student' });
   const item = await prisma.classEnrollment.upsert({ where: { classId_studentId: { classId: req.params.classId, studentId: req.params.id } }, update: {}, create: { classId: req.params.classId, studentId: req.params.id } });
   res.json({ success: true, data: item });
 });
@@ -295,8 +387,6 @@ router.get('/parent/children/:id/sessions/:sessionId', async (req, res) => {
   const item = await prisma.session.findUnique({ where: { id: req.params.sessionId }, include: { class: true, tutor: true } });
   return item ? res.json({ success: true, data: item }) : res.status(404).json({ success: false, message: 'Session not found' });
 });
-router.get('/parent/subscription/packages/:id', async (req, res) => res.json({ success: true, data: { id: req.params.id, name: 'Tutoring Plan', price: 0, features: [] } }));
-
 // Notification item actions; list endpoints are provided in app.ts.
 router.get('/notifications/:id', async (req, res) => { const item = await getRecord('notification', req.params.id); return item ? res.json({ success: true, data: { data: item } }) : res.status(404).json({ success: false, message: 'Notification not found' }); });
 router.put('/notifications/read-all', async (req, res) => { const rows = await prisma.appRecord.findMany({ where: { kind: 'notification', ownerId: req.user!.userId } }); for (const row of rows) await updateRecord('notification', row.id, { is_read: true }); res.json({ success: true }); });

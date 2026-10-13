@@ -1,16 +1,22 @@
 import { Request, Response } from 'express';
+import prisma from '../config/prisma';
+import { findPackage, formatRecord, listPackages } from '../services/subscription.service';
 
-// In-memory store for mock packages during development
-let mockPackages = [
-  { id: 'pkg_1', name: 'Basic Plan', subject: 'Math', yearLevel: 'Year 10', tutor: 'All Tutors', price: 99.00, billing_cycle: 'monthly', status: 'active', features: ['1 Student', 'Basic Support'] },
-  { id: 'pkg_2', name: 'Premium Plan', subject: 'Science', yearLevel: 'Year 11', tutor: 'All Tutors', price: 149.00, billing_cycle: 'monthly', status: 'active', features: ['Unlimited Students', '24/7 Support'] }
-];
+const normalizePackage = (body: any) => ({
+  ...body,
+  name: String(body?.name || '').trim(),
+  price: Number(body?.price || 0),
+  student_limit: Number(body?.student_limit || 0),
+  class_ids: Array.isArray(body?.class_ids) ? body.class_ids.map(String) : [],
+  is_active: body?.is_active !== false,
+  status: body?.is_active === false ? 'inactive' : 'active',
+});
 
 export const getPackages = async (req: Request, res: Response) => {
   try {
     return res.status(200).json({
       success: true,
-      data: mockPackages
+      data: await listPackages()
     });
   } catch (error: any) {
     console.error('getPackages error:', error);
@@ -20,13 +26,13 @@ export const getPackages = async (req: Request, res: Response) => {
 
 export const getPackage = async (req: Request, res: Response) => {
   try {
-    const pkg = mockPackages.find(p => p.id === req.params.id);
+    const pkg = await findPackage(req.params.id);
     if (!pkg) {
       return res.status(404).json({ success: false, message: 'Package not found' });
     }
     return res.status(200).json({
       success: true,
-      data: pkg
+      data: { data: pkg }
     });
   } catch (error: any) {
     console.error('getPackage error:', error);
@@ -36,16 +42,16 @@ export const getPackage = async (req: Request, res: Response) => {
 
 export const createPackage = async (req: Request, res: Response) => {
   try {
-    const newPackage = {
-      id: `pkg_${Date.now()}`,
-      ...req.body,
-      status: 'active'
-    };
-    mockPackages.push(newPackage);
+    const data = normalizePackage(req.body);
+    if (!data.name || data.price < 0) {
+      return res.status(400).json({ success: false, message: 'Package name and a valid price are required' });
+    }
+    const record = await prisma.appRecord.create({ data: { kind: 'package', data } });
+    const newPackage = formatRecord(record);
     
     return res.status(201).json({
       success: true,
-      data: newPackage
+      data: { data: newPackage }
     });
   } catch (error: any) {
     console.error('createPackage error:', error);
@@ -55,16 +61,19 @@ export const createPackage = async (req: Request, res: Response) => {
 
 export const updatePackage = async (req: Request, res: Response) => {
   try {
-    const index = mockPackages.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
+    const existing = await prisma.appRecord.findFirst({ where: { id: req.params.id, kind: 'package' } });
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Package not found' });
     }
-    
-    mockPackages[index] = { ...mockPackages[index], ...req.body };
+    const previous = existing.data && typeof existing.data === 'object' ? existing.data as any : {};
+    const record = await prisma.appRecord.update({
+      where: { id: existing.id },
+      data: { data: normalizePackage({ ...previous, ...req.body }) },
+    });
     
     return res.status(200).json({
       success: true,
-      data: mockPackages[index]
+      data: { data: formatRecord(record) }
     });
   } catch (error: any) {
     console.error('updatePackage error:', error);
@@ -74,12 +83,11 @@ export const updatePackage = async (req: Request, res: Response) => {
 
 export const deletePackage = async (req: Request, res: Response) => {
   try {
-    const index = mockPackages.findIndex(p => p.id === req.params.id);
-    if (index === -1) {
+    const existing = await prisma.appRecord.findFirst({ where: { id: req.params.id, kind: 'package' } });
+    if (!existing) {
       return res.status(404).json({ success: false, message: 'Package not found' });
     }
-    
-    mockPackages.splice(index, 1);
+    await prisma.appRecord.delete({ where: { id: existing.id } });
     
     return res.status(200).json({
       success: true,

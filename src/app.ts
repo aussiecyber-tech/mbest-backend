@@ -53,6 +53,19 @@ app.get('/health/db', async (req: Request, res: Response) => {
   }
 });
 
+// Payment slips use an unguessable record id plus a separate random token so
+// they can be displayed by an <img> element without exposing bearer tokens.
+app.get(['/api/payment-slips/:id', '/api/v1/payment-slips/:id'], async (req: Request, res: Response) => {
+  const record = await prisma.appRecord.findFirst({ where: { id: req.params.id, kind: 'payment' } });
+  const data = record?.data && typeof record.data === 'object' ? record.data as any : null;
+  if (!data || !req.query.token || req.query.token !== data.payment_slip_token || !data.payment_slip_data) {
+    return res.status(404).send('Payment slip not found');
+  }
+  res.setHeader('Content-Type', data.payment_slip_type || 'application/octet-stream');
+  res.setHeader('Cache-Control', 'private, no-store');
+  return res.send(Buffer.from(data.payment_slip_data, 'base64'));
+});
+
 // Notifications routes
 app.get(['/api/notifications/unread-count', '/api/v1/notifications/unread-count'], (req: Request, res: Response) => {
   res.status(200).json({ success: true, data: { unread_count: 0 } });

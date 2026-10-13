@@ -17,6 +17,7 @@ const normalizeClassInput = (value: unknown) => {
   const input = value as Record<string, unknown>;
   return {
     ...input,
+    code: input.code ?? input.class_code,
     subject: input.subject ?? input.category ?? 'General',
     yearLevel: input.yearLevel ?? input.year_level,
     tutorId: input.tutorId ?? input.tutor_id,
@@ -33,6 +34,7 @@ const optionalInteger = z.preprocess(
 
 export const createClassSchema = z.preprocess(normalizeClassInput, z.object({
   name: z.string().min(2, 'Class name must be at least 2 characters').max(100, 'Class name is too long'),
+  code: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_-]+$/, 'Code may contain letters, numbers, hyphens, and underscores').optional(),
   subject: z.string().min(2, 'Subject must be at least 2 characters').default('General'),
   yearLevel: z.string().optional().nullable(),
   tutorId: z.string().uuid().optional().nullable().or(z.string().optional().nullable()),
@@ -66,6 +68,7 @@ export const createClassSchema = z.preprocess(normalizeClassInput, z.object({
 
 export const updateClassSchema = z.preprocess(normalizeClassInput, z.object({
   name: z.string().min(2).max(100).optional(),
+  code: z.string().trim().min(3).max(30).regex(/^[A-Za-z0-9_-]+$/).optional(),
   subject: z.string().min(2).optional(),
   yearLevel: z.string().optional().nullable(),
   tutorId: z.string().optional().nullable(),
