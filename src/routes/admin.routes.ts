@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { getDashboard, getUsers, getUser, getUserStats, createUser, updateUser, deleteUser, getCalendarFilterOptions } from '../controllers/admin.controller';
+import { getDashboard, getAnalytics, getUsers, getUser, getUserStats, createUser, updateUser, deleteUser, getCalendarFilterOptions } from '../controllers/admin.controller';
 import { getPackages, getPackage, createPackage, updatePackage, deletePackage } from '../controllers/package.controller';
 import { getClasses, getClassById, createClass, updateClass, deleteClass, getClassOptions } from '../controllers/class.controller';
 import { getSessions, createSession, updateSession, deleteSession } from '../controllers/session.controller';
@@ -13,6 +13,7 @@ const router: ReturnType<typeof Router> = Router();
 
 // Dashboard & User Analytics
 router.get('/dashboard', getDashboard);
+router.get('/analytics', authenticateToken, requireRole('ADMIN'), getAnalytics);
 router.get('/users', getUsers);
 router.get('/users/stats', getUserStats);
 router.get('/users/:id', authenticateToken, requireRole('ADMIN'), getUser);

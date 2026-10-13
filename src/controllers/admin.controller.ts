@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import prisma from '../config/prisma';
-import { Role } from '@prisma/client';
+import { Role, SessionStatus } from '@prisma/client';
 import bcrypt from 'bcryptjs';
 
 import fs from 'fs';
@@ -372,6 +372,44 @@ export const getCalendarFilterOptions = async (req: Request, res: Response) => {
   } catch (error: any) {
     console.error('getCalendarFilterOptions error:', error);
     return res.status(500).json({ success: false, message: 'Failed to retrieve filter options' });
+  }
+};
+
+export const getAnalytics = async (req: Request, res: Response) => {
+  try {
+    const [totalUsers, totalStudents, totalTutors, totalClasses, totalSessions, completedSessions, totalAssignments, totalResources] = await Promise.all([
+      prisma.user.count(),
+      prisma.user.count({ where: { role: Role.STUDENT } }),
+      prisma.user.count({ where: { role: Role.TUTOR } }),
+      prisma.class.count(),
+      prisma.session.count(),
+      prisma.session.count({ where: { status: SessionStatus.COMPLETED } }),
+      prisma.assignment.count(),
+      prisma.resource.count()
+    ]);
+
+    return res.status(200).json({
+      success: true,
+      data: {
+        overview: {
+          total_users: totalUsers,
+          total_students: totalStudents,
+          total_tutors: totalTutors,
+          total_classes: totalClasses,
+          total_resources: totalResources
+        },
+        revenue: { total_revenue: 0, pending_revenue: 0 },
+        sessions: { total_sessions: totalSessions, completed_sessions: completedSessions },
+        assignments: { total_assignments: totalAssignments, published_assignments: totalAssignments },
+        enrollment_trends: [],
+        course_distribution: [],
+        revenue_trends: [],
+        top_courses: []
+      }
+    });
+  } catch (error: any) {
+    console.error('getAnalytics error:', error);
+    return res.status(500).json({ success: false, message: 'Failed to retrieve analytics' });
   }
 };
 
