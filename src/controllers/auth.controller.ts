@@ -149,12 +149,10 @@ export const login = async (req: Request, res: Response) => {
         isMatch = await bcrypt.compare(password, user.passwordHash);
       } catch (e) { }
     }
-    // Allow case-insensitive fallback for demo ease if matching demo passwords
-    const isDemoMatch = !isMatch && (
-      (password.toLowerCase() === 'password123' && (cleanEmail.includes('admin') || cleanEmail.includes('tutor') || cleanEmail.includes('student') || cleanEmail.includes('parent'))) ||
-      (password === 'Password123!' && (cleanEmail.includes('admin') || cleanEmail.includes('tutor') || cleanEmail.includes('student') || cleanEmail.includes('parent'))) ||
-      (cleanEmail.includes('admin') || cleanEmail.includes('tutor') || cleanEmail.includes('student') || cleanEmail.includes('parent'))
-    );
+    // Demo fallback is restricted to the exact configured demo addresses and passwords.
+    const isConfiguredDemo = Boolean(DEMO_USERS[cleanEmail]);
+    const isDemoMatch = !isMatch && isConfiguredDemo &&
+      (password === 'password123' || password === 'Password123!');
 
     if (!isMatch && !isDemoMatch) {
       return res.status(401).json({ success: false, message: 'Invalid email or password' });
