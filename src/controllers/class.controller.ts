@@ -65,13 +65,10 @@ export const getClasses = async (req: Request, res: Response) => {
     if (classes.length === 0) {
       return res.status(200).json({
         success: true,
+        classes: [],
         data: {
-          data: [
-            { id: 'mock_cls_1', name: 'Math 101', subject: 'Math', tutor: { name: 'Luke Davidson' } },
-            { id: 'mock_cls_2', name: 'Advanced English', subject: 'English', tutor: { name: 'Sarah Smith' } },
-            { id: 'mock_cls_3', name: 'Basic Science', subject: 'Science', tutor: { name: 'Jane Doe' } }
-          ],
-          total: 3,
+          data: [],
+          total: 0,
           current_page: 1,
           last_page: 1
         }
