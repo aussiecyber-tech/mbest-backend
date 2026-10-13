@@ -107,7 +107,10 @@ app.use(['/api/resources', '/api/v1/resources'], resourceRoutes);
 
 // Explicit compatibility routes for every module used by the deployed client.
 // These are mounted after the core routers, so real domain controllers win.
-app.use(['/api', '/api/v1'], compatRoutes);
+// Mount the longer prefix first. Mounting ['/api', '/api/v1'] as one array
+// makes Express strip only '/api' from '/api/v1/...' requests.
+app.use('/api/v1', compatRoutes);
+app.use('/api', compatRoutes);
 
 // Never report a fake success for an endpoint that does not exist. Mock fallback
 // is opt-in for local demos only and must remain disabled on Railway.
