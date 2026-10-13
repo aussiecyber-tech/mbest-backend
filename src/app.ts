@@ -12,6 +12,7 @@ import sessionRoutes from './routes/session.routes';
 import profileRoutes from './routes/profile.routes';
 import parentSubscriptionRoutes from './routes/parent.subscription.routes';
 import resourceRoutes from './routes/resource.routes';
+import compatRoutes from './routes/compat.routes';
 import prisma from './config/prisma';
 
 const app: Express = express();
@@ -103,6 +104,10 @@ app.use(['/api/parent/subscription', '/api/v1/parent/subscription'], parentSubsc
 app.use(['/api/sessions', '/api/v1/sessions'], sessionRoutes);
 app.use(['/api/profile', '/api/v1/profile'], profileRoutes);
 app.use(['/api/resources', '/api/v1/resources'], resourceRoutes);
+
+// Explicit compatibility routes for every module used by the deployed client.
+// These are mounted after the core routers, so real domain controllers win.
+app.use(['/api', '/api/v1'], compatRoutes);
 
 // Never report a fake success for an endpoint that does not exist. Mock fallback
 // is opt-in for local demos only and must remain disabled on Railway.

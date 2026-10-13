@@ -184,3 +184,18 @@ model Resource {
 
   @@map("resources")
 }
+
+// Persistent storage for workflow modules that do not need their own relational
+// model yet (messages, lesson requests, invoices, questions and availability).
+model AppRecord {
+  id        String   @id @default(uuid())
+  kind      String
+  ownerId   String?  @map("owner_id")
+  data      Json
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+
+  @@index([kind])
+  @@index([ownerId])
+  @@map("app_records")
+}

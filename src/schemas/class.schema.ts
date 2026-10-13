@@ -17,7 +17,7 @@ const normalizeClassInput = (value: unknown) => {
   const input = value as Record<string, unknown>;
   return {
     ...input,
-    subject: input.subject ?? input.category,
+    subject: input.subject ?? input.category ?? 'General',
     yearLevel: input.yearLevel ?? input.year_level,
     tutorId: input.tutorId ?? input.tutor_id,
     maxStudents: input.maxStudents ?? input.max_students ?? input.capacity,
@@ -28,12 +28,12 @@ const normalizeClassInput = (value: unknown) => {
 
 const optionalInteger = z.preprocess(
   value => value === '' || value === null || value === undefined ? undefined : Number(value),
-  z.number().int().min(1, 'At least 1 student required').max(50, 'Maximum 50 students per class').optional()
+  z.number().int().min(1, 'At least 1 student required').max(1000, 'Maximum 1000 students per class').optional()
 );
 
 export const createClassSchema = z.preprocess(normalizeClassInput, z.object({
   name: z.string().min(2, 'Class name must be at least 2 characters').max(100, 'Class name is too long'),
-  subject: z.string().min(2, 'Subject must be at least 2 characters'),
+  subject: z.string().min(2, 'Subject must be at least 2 characters').default('General'),
   yearLevel: z.string().optional().nullable(),
   tutorId: z.string().uuid().optional().nullable().or(z.string().optional().nullable()),
   description: z.string().max(500, 'Description cannot exceed 500 characters').optional().nullable(),
