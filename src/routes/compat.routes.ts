@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import prisma from '../config/prisma';
 import { authenticateToken } from '../middleware/auth';
+import { requireRole } from '../middleware/rbac';
 import { getClasses, getClassById } from '../controllers/class.controller';
 import { getSessions, createSession, updateSession, deleteSession } from '../controllers/session.controller';
 import { validateBody } from '../middleware/validate';
@@ -21,6 +22,10 @@ const router: ReturnType<typeof Router> = Router();
   );
 });
 router.use(authenticateToken);
+router.use('/admin', requireRole('ADMIN'));
+router.use('/tutor', requireRole('TUTOR', 'ADMIN'));
+router.use('/student', requireRole('STUDENT', 'ADMIN'));
+router.use('/parent', requireRole('PARENT', 'ADMIN'));
 
 const recordData = (record: any) => {
   const raw = record.data && typeof record.data === 'object' ? record.data as any : {};
@@ -141,6 +146,10 @@ router.get(['/admin/payments', '/parent/billing/payments'], async (req, res) => 
 router.get('/admin/payments/:id', async (req, res) => { const item = await getRecord('payment', req.params.id); return item ? res.json({ success: true, data: item }) : res.status(404).json({ success: false, message: 'Payment not found' }); });
 router.post('/admin/payments/:id/approve', async (req, res) => res.json({ success: true, data: { data: await updateRecord('payment', req.params.id, { status: 'approved', ...(req.body || {}) }) } }));
 router.post('/admin/payments/:id/reject', async (req, res) => res.json({ success: true, data: { data: await updateRecord('payment', req.params.id, { status: 'rejected', ...(req.body || {}) }) } }));
+router.delete('/admin/payments/:id', async (req, res) => {
+  const result = await prisma.appRecord.deleteMany({ where: { id: req.params.id, kind: 'payment' } });
+  return result.count ? res.json({ success: true }) : res.status(404).json({ success: false, message: 'Payment not found' });
+});
 
 // Role-specific class aliases and enrollment actions.
 router.get(['/student/classes', '/tutor/classes'], getClasses);
